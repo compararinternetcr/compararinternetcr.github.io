@@ -585,9 +585,12 @@ footer{background:var(--bg-s);border-top:1px solid var(--bd);padding:52px 0 24px
 </div></footer>
 
 <!-- SOURCE MODAL -->
-<div id="src-modal">
+<div id="src-modal" onclick="if(event.target===this)closeSrc()">
   <div class="src-box">
-    <h3>📡 Fuentes de datos verificables</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h3>📡 Fuentes de datos verificables</h3>
+      <button onclick="closeSrc()" style="background:none;border:none;color:var(--t2);font-size:20px;cursor:pointer;line-height:1;padding:4px 8px" title="Cerrar">✕</button>
+    </div>
     <p>Contenido real obtenido de cada sitio oficial. Podés verificar el origen de cada precio.</p>
     <div id="src-entries"></div>
     <button class="btn-close-modal" onclick="closeSrc()">Cerrar</button>
@@ -1395,6 +1398,7 @@ function showSrc() {
   $('src-modal').classList.add('show');
 }
 function closeSrc() { $('src-modal').classList.remove('show'); }
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSrc(); });
 
 /* ─── FILTRAR + ORDENAR ─── */
 function filtered() {

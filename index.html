@@ -697,13 +697,10 @@ const SOURCES = {
     urlVerify: 'https://www.kolbi.cr/tienda/sc/ventas-hogar/internet/fibra-optica',
     logo: 'ICE', cls: 'co-k', bar: 'bk'
   },
-  // Liberty: internet-hogar es SPA Angular. 
-  // Del diagnóstico: libertycr.com/internet-hogar devolvió 6028 chars con contentHasPrices=true ✅
-  // urlApi: endpoint interno que la SPA usa para cargar planes (puede devolver JSON directo)
+  // Liberty: SPA Angular que bloquea bots — API requiere auth (401). Usar Jina Search como fallback.
   Liberty: {
     url:       'https://libertycr.com/internet-hogar',
     urlAlt:    'https://libertycr.com/internet-hogar/planes',
-    urlApi:    'https://libertycr.com/api/v1/categories/internet-hogar/products',
     urlVerify: 'https://libertycr.com/internet-hogar/planes',
     logo: 'LBT', cls: 'co-l', bar: 'bl'
   },
@@ -900,30 +897,6 @@ const log = msg => { if ($('ov-log')) $('ov-log').textContent = msg; };
  */
 async function fetchWithJinaReader(empresa) {
   const src = SOURCES[empresa];
-
-  // En HTTPS, Liberty puede tener un API interno que devuelve JSON directamente
-  // (más confiable que intentar renderizar la SPA via Jina)
-  if (!IS_FILE && empresa === 'Liberty' && src.urlApi) {
-    try {
-      log(`Liberty: probando API interna...`);
-      const r = await fetchWithTimeout(src.urlApi, {
-        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-      }, 10000);
-      if (r.ok) {
-        const json = await r.json();
-        // Convertir JSON a texto para que la IA lo procese igual que markdown
-        const content = JSON.stringify(json);
-        if (content.length > 100) {
-          const lower = content.toLowerCase();
-          if (lower.includes('mbps') || lower.includes('precio') || lower.includes('plan')) {
-            return { content, method: 'reader', url: src.urlApi };
-          }
-        }
-      }
-    } catch(e) {
-      console.warn('Liberty API interna falló:', e.message);
-    }
-  }
 
   // Para Kolbi intentamos la URL principal y si falla la alternativa WCM
   // La tienda/sc/ es una SPA Angular que no renderiza precios sin JS del cliente

@@ -338,7 +338,6 @@ footer{background:var(--bg-s);border-top:1px solid var(--bd);padding:52px 0 24px
     <span class="ico">↻</span> Actualizar
   </button>
   <button class="src-link" id="src-btn" onclick="showSrc()" style="display:none">Ver fuentes</button>
-  <button class="btn-save" id="btn-save" onclick="saveUpdatedFile()" style="display:none" title="Descarga el archivo con precios reales incrustados">&#x1F4BE; Guardar version actualizada</button>
 </div>
 
 <!-- OVERLAY DE CARGA -->
@@ -604,7 +603,7 @@ footer{background:var(--bg-s);border-top:1px solid var(--bd);padding:52px 0 24px
 'use strict';
 
 /* ─── CONFIGURACIÓN ─── */
-const CACHE_KEY = 'icr_v16';
+const CACHE_KEY = 'icr_v17';
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
 
 /*
@@ -629,7 +628,15 @@ let _alloriginsIdx = 0; // controla stagger para no saturar allorigins
 async function fetchProxy(url, ms) {
   ms = ms || 22000;
   if (!IS_FILE) {
-    const r = await fetchWithTimeout(url, {}, ms);
+    // HTTPS: fetch directo con headers de Jina para mejor render de SPAs
+    const jinaHeaders = url.includes('r.jina.ai') ? {
+      'X-Wait-For-Selector': 'body',
+      'X-Timeout':           '15',
+      'X-Remove-Selector':   'nav,footer,header,script,style,[class*="cookie"],[class*="banner"],[class*="modal"],[class*="popup"]',
+      'X-Return-Format':     'markdown',
+      'Accept':              'text/plain'
+    } : {};
+    const r = await fetchWithTimeout(url, { headers: jinaHeaders }, ms);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.text();
   }
@@ -690,10 +697,13 @@ const SOURCES = {
     urlVerify: 'https://www.kolbi.cr/tienda/sc/ventas-hogar/internet/fibra-optica',
     logo: 'ICE', cls: 'co-k', bar: 'bk'
   },
-  // Liberty: internet-hogar es SPA. Alternativas también son SPA. Fallback estático.
+  // Liberty: internet-hogar es SPA Angular. 
+  // Del diagnóstico: libertycr.com/internet-hogar devolvió 6028 chars con contentHasPrices=true ✅
+  // urlApi: endpoint interno que la SPA usa para cargar planes (puede devolver JSON directo)
   Liberty: {
-    url:       'https://libertycr.com/internet-hogar/planes',
-    urlAlt:    'https://flsit.libertycr.lla.digital/internet-hogar/planes',
+    url:       'https://libertycr.com/internet-hogar',
+    urlAlt:    'https://libertycr.com/internet-hogar/planes',
+    urlApi:    'https://libertycr.com/api/v1/categories/internet-hogar/products',
     urlVerify: 'https://libertycr.com/internet-hogar/planes',
     logo: 'LBT', cls: 'co-l', bar: 'bl'
   },
@@ -717,7 +727,7 @@ const PROVINCIAS = ['San José','Heredia','Alajuela','Cartago','Guanacaste','Pun
 /* ─── FALLBACK ESTÁTICO (último recurso) ─── */
 // Precios de referencia — Kolbi actualizados agosto 2025 (fuente: delfino.cr, adiariocr.com)
 // Kolbi: 200 Mbps = ₡24,500 confirmado. Tiers 800 Mbps y 1 Gbps confirmados como oferta actual.
-const FALLBACK = [ /* FALLBACK_START */ /* FALLBACK_START */
+const FALLBACK = [ /* FALLBACK_START */
   // Kolbi 2026 - precios verificados de kolbi.cr/tienda/sc el 17-mar-2026 via Jina Reader
   // Nota: precio incluye IVA+911+Cruz Roja. Sumar ₡1,130/mes por alquiler de modem.
   // 200/300/500 = precios promo especial 2026. 100/800/1Gbps = estimados.
@@ -890,6 +900,30 @@ const log = msg => { if ($('ov-log')) $('ov-log').textContent = msg; };
  */
 async function fetchWithJinaReader(empresa) {
   const src = SOURCES[empresa];
+
+  // En HTTPS, Liberty puede tener un API interno que devuelve JSON directamente
+  // (más confiable que intentar renderizar la SPA via Jina)
+  if (!IS_FILE && empresa === 'Liberty' && src.urlApi) {
+    try {
+      log(`Liberty: probando API interna...`);
+      const r = await fetchWithTimeout(src.urlApi, {
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      }, 10000);
+      if (r.ok) {
+        const json = await r.json();
+        // Convertir JSON a texto para que la IA lo procese igual que markdown
+        const content = JSON.stringify(json);
+        if (content.length > 100) {
+          const lower = content.toLowerCase();
+          if (lower.includes('mbps') || lower.includes('precio') || lower.includes('plan')) {
+            return { content, method: 'reader', url: src.urlApi };
+          }
+        }
+      }
+    } catch(e) {
+      console.warn('Liberty API interna falló:', e.message);
+    }
+  }
 
   // Para Kolbi intentamos la URL principal y si falla la alternativa WCM
   // La tienda/sc/ es una SPA Angular que no renderiza precios sin JS del cliente

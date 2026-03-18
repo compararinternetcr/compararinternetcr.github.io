@@ -2,16 +2,15 @@
 <html lang="es-CR">
 <head>
 <meta charset="UTF-8">
-<meta name="google-adsense-account" content="ca-pub-5515541580647235">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Compara planes de internet residencial en Costa Rica: Kolbi, Liberty y Claro. Precios actualizados en tiempo real desde los sitios oficiales.">
 <title>Comparar Internet en Costa Rica 2025 | Kolbi vs Liberty vs Claro</title>
 <!-- Puter.js: 500+ modelos gratis sin API key (Claude, GPT-5, Gemini, DeepSeek) -->
 <script src="https://js.puter.com/v2/"></script>
+<meta name="google-adsense-account" content="ca-pub-5515541580647235">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5515541580647235" crossorigin="anonymous"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5515541580647235"
-     crossorigin="anonymous"></script>
 <style>
 :root{
   --bg:#080c14;--bg-s:#0d1321;--bg-c:#111827;--bg-h:#151f30;
@@ -79,6 +78,7 @@ nav.sc{box-shadow:0 4px 30px rgba(0,0,0,.5)}
 .btn-refresh .ico{transition:transform .3s}.btn-refresh.spin .ico{animation:spin .8s linear infinite}
 .src-link{font-size:11px;color:var(--cy);border:1px solid var(--bd-a);border-radius:6px;padding:3px 8px;transition:all var(--tr);cursor:pointer}
 .src-link:hover{background:var(--cy-d)}
+.btn-save{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;font-size:11.5px;font-weight:700;border:1px solid rgba(0,229,160,.35);color:var(--em);background:rgba(0,229,160,.1);cursor:pointer;transition:all var(--tr)}.btn-save:hover{background:var(--em);color:#000}
 
 /* OVERLAY */
 #overlay{position:fixed;inset:0;z-index:200;background:rgba(8,12,20,.94);backdrop-filter:blur(14px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;opacity:0;pointer-events:none;transition:opacity .3s ease}
@@ -338,6 +338,7 @@ footer{background:var(--bg-s);border-top:1px solid var(--bd);padding:52px 0 24px
     <span class="ico">↻</span> Actualizar
   </button>
   <button class="src-link" id="src-btn" onclick="showSrc()" style="display:none">Ver fuentes</button>
+  <button class="btn-save" id="btn-save" onclick="saveUpdatedFile()" style="display:none" title="Descarga el archivo con precios reales incrustados">&#x1F4BE; Guardar version actualizada</button>
 </div>
 
 <!-- OVERLAY DE CARGA -->
@@ -600,7 +601,7 @@ footer{background:var(--bg-s);border-top:1px solid var(--bd);padding:52px 0 24px
 'use strict';
 
 /* ─── CONFIGURACIÓN ─── */
-const CACHE_KEY = 'icr_v5';
+const CACHE_KEY = 'icr_v16';
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
 
 /*
@@ -636,21 +637,38 @@ async function fetchProxy(url, ms) {
 
   const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
 
-  // Primer intento
+  // Primer intento — allorigins
   try {
     const r = await fetchWithTimeout(proxyUrl, {}, ms + 8000);
     if (!r.ok) throw new Error('allorigins HTTP ' + r.status);
     const j = await r.json();
     if (!j.contents || j.contents.length < 50) throw new Error('allorigins: sin contenido');
-    return j.contents;
+    const txt = j.contents;
+    // Detectar error de Jina rate limit
+    if (txt.includes('"code":429') || txt.includes('rate limit exceeded')) { await sleep(4000); throw new Error('Jina 429'); }
+    if (txt.includes('"code":451')) throw new Error('Jina 451: dominio bloqueado');
+    return txt;
   } catch(e) {
-    // Retry una vez con delay extra si fue rate-limit
-    await sleep(3000);
-    const r2 = await fetchWithTimeout(proxyUrl, {}, ms + 10000);
-    if (!r2.ok) throw new Error('allorigins retry HTTP ' + r2.status);
-    const j2 = await r2.json();
-    if (!j2.contents || j2.contents.length < 50) throw new Error('allorigins retry: sin contenido');
-    return j2.contents;
+    // Segundo intento — codetabs como proxy alternativo
+    try {
+      await sleep(800);
+      const codetabsUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url);
+      const rc = await fetchWithTimeout(codetabsUrl, {}, ms + 6000);
+      if (!rc.ok) throw new Error('codetabs HTTP ' + rc.status);
+      const tc = await rc.text();
+      if (!tc || tc.length < 50) throw new Error('codetabs: sin contenido');
+      if (tc.includes('"code":429') || tc.includes('rate limit exceeded')) { await sleep(4000); throw new Error('Jina 429 via codetabs'); }
+      if (tc.includes('"code":451')) throw new Error('Jina 451 via codetabs');
+      return tc;
+    } catch(e2) {
+      // Tercer intento — allorigins retry original
+      await sleep(2000);
+      const r2 = await fetchWithTimeout(proxyUrl, {}, ms + 10000);
+      if (!r2.ok) throw new Error('allorigins retry HTTP ' + r2.status);
+      const j2 = await r2.json();
+      if (!j2.contents || j2.contents.length < 50) throw new Error('allorigins retry: sin contenido');
+      return j2.contents;
+    }
   }
 }
 
@@ -696,7 +714,7 @@ const PROVINCIAS = ['San José','Heredia','Alajuela','Cartago','Guanacaste','Pun
 /* ─── FALLBACK ESTÁTICO (último recurso) ─── */
 // Precios de referencia — Kolbi actualizados agosto 2025 (fuente: delfino.cr, adiariocr.com)
 // Kolbi: 200 Mbps = ₡24,500 confirmado. Tiers 800 Mbps y 1 Gbps confirmados como oferta actual.
-const FALLBACK = [
+const FALLBACK = [ /* FALLBACK_START */ /* FALLBACK_START */
   // Kolbi 2026 - precios verificados de kolbi.cr/tienda/sc el 17-mar-2026 via Jina Reader
   // Nota: precio incluye IVA+911+Cruz Roja. Sumar ₡1,130/mes por alquiler de modem.
   // 200/300/500 = precios promo especial 2026. 100/800/1Gbps = estimados.
@@ -725,7 +743,8 @@ const FALLBACK = [
   { empresa:'Claro', plan:'Ultraconectados 4 — 500 Mbps',  velocidad:500,  precio:26455, instalacion:'Gratis', permanencia:'12 meses',     provincias:['San José','Heredia','Alajuela','Cartago'], dataSource:'fallback' },
   { empresa:'Claro', plan:'Ultraconectados 5 — 600 Mbps',  velocidad:600,  precio:30425, instalacion:'Gratis', permanencia:'12 meses',     provincias:['San José','Heredia','Alajuela'], dataSource:'fallback' },
   { empresa:'Claro', plan:'Ultraconectados 6 — 1024 Mbps', velocidad:1024, precio:49860, instalacion:'Gratis', permanencia:'12 meses',     provincias:['San José','Heredia'],           dataSource:'fallback' },
-];
+
+/* FALLBACK_END */ ];
 
 const FAQS = [
   { q:'¿Cómo se obtienen los precios en tiempo real?',
@@ -810,6 +829,18 @@ function loadCache() {
     const r = JSON.parse(localStorage.getItem(CACHE_KEY)||'null');
     if (!r || Date.now()-r.ts > CACHE_TTL) return null;
     return r;
+  } catch(e){ return null; }
+}
+
+/* ─── CACHE POR EMPRESA — datos reales sin TTL ─── */
+function saveCacheEmpresa(empresa, planes) {
+  try { localStorage.setItem(CACHE_KEY+'_'+empresa, JSON.stringify({ ts:Date.now(), planes })); } catch(e){}
+}
+function loadCacheEmpresa(empresa) {
+  try {
+    const r = JSON.parse(localStorage.getItem(CACHE_KEY+'_'+empresa)||'null');
+    if (!r) return null;
+    return r.planes;
   } catch(e){ return null; }
 }
 
@@ -927,9 +958,77 @@ async function puterAvailable() {
   } catch(e) { return false; }
 }
 
+/* ─── REGEX EXTRACTOR (sin red, funciona en file://) ───
+ * Primer intento antes de llamar a la IA.
+ * Normaliza precios CR con punto (23.733→23733), strip HTML.
+ * ─────────────────────────────────────────────────────── */
+function regexExtract(rawContent, empresa) {
+  var srcUrl = SOURCES[empresa].url;
+  var text = rawContent
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/(\d{2})\.(\d{3})\b/g, '$1$2');
+  var lines = text.split(/[\n|]+/).map(function(l){ return l.trim(); }).filter(Boolean);
+  var plans = [];
+  var rSpeed = /(\d+)\s*(?:Mbps|mbps|MBPS|Megas?|Mega)/i;
+  for (var i = 0; i < lines.length; i++) {
+    var win = lines.slice(Math.max(0, i-3), i+6).join(' ');
+    var mSpeed = rSpeed.exec(win);
+    if (!mSpeed) continue;
+    var speed = parseInt(mSpeed[1]);
+    if (speed < 5 || speed > 10000) continue;
+    var price = 0;
+    var mCol = /\u20a1\s*([\d,.]+)/.exec(win);
+    if (mCol) price = parseInt(mCol[1].replace(/[.,]/g, ''));
+    if (!price || price < 5000 || price > 500000) {
+      var rx2 = /\b(\d{5,6})\b/g, m2;
+      while ((m2 = rx2.exec(win)) !== null) {
+        var n2 = parseInt(m2[1]);
+        if (n2 >= 10000 && n2 <= 150000) { price = n2; break; }
+      }
+    }
+    if (!price || price < 5000 || price > 500000) continue;
+    var planLine = '';
+    var ctx = lines.slice(Math.max(0,i-4), i+2);
+    for (var k=0; k<ctx.length; k++) {
+      if (/plan|fibra|internet|ultra|mega|hogar/i.test(ctx[k]) && ctx[k].length > 3) { planLine = ctx[k]; break; }
+    }
+    var planName = planLine.replace(/#+|\*\*/g,'').trim().slice(0,60) || (empresa + ' ' + speed + ' Mbps');
+    var dup = false;
+    for (var d=0; d<plans.length; d++) { if (plans[d].velocidad === speed) { dup=true; break; } }
+    if (dup) continue;
+    plans.push({ empresa: empresa, plan: planName, velocidad: speed, precio: price,
+      instalacion: 'Gratis', permanencia: 'Sin contrato',
+      provincias: ['San Jos\u00e9','Heredia','Alajuela','Cartago'],
+      url: srcUrl, dataSource: 'real' });
+  }
+  plans.sort(function(a,b){ return a.velocidad - b.velocidad; });
+  return plans;
+}
+
+
 async function extractPlansWithAI(empresa, fetchResult) {
   const srcUrl  = SOURCES[empresa].url;
-  const content = fetchResult.content.slice(0, 8000).replace(/\s+/g, ' ').trim();
+
+  // Pre-procesar contenido: strip HTML, normalizar formato CRC, recortar
+  const rawText = fetchResult.content
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/(\d{2})\.(\d{3})/g, '')
+    .replace(/\s{2,}/g, ' ').trim()
+    .slice(0, 12000);
+
+  // INTENTO 0: Regex propio (sin red, instantaneo)
+  const regexPlanes = regexExtract(rawText, empresa).map(norm).filter(valid);
+  if (regexPlanes.length > 0) {
+    log(empresa + ': ' + regexPlanes.length + ' planes extraidos por regex');
+    return regexPlanes;
+  }
+
+  const content = rawText.slice(0, 8000);
 
   const systemPrompt =
     `Eres un extractor de datos JSON especializado en planes de internet de Costa Rica. ` +
@@ -1094,6 +1193,7 @@ async function scrapeEmpresa(empresa, stepN) {
       const planes = await extractPlansWithAI(empresa, fetchResult);
       if (planes.length > 0) {
         // Registrar en SCRAPE_LOG para "Ver fuentes"
+        saveCacheEmpresa(empresa, planes);
         SCRAPE_LOG.push({
           empresa,
           url: fetchResult.url,
@@ -1112,7 +1212,18 @@ async function scrapeEmpresa(empresa, stepN) {
     }
   }
 
-  // Último recurso: datos estáticos de referencia
+  // Penultimo recurso: cache por empresa (datos reales de sesion anterior, sin TTL)
+  const cachedEmpresa = loadCacheEmpresa(empresa);
+  if (cachedEmpresa && cachedEmpresa.length) {
+    log(empresa + ': usando cache de empresa (sesion anterior exitosa)');
+    setStep(stepN, 'ok', 'Cache');
+    SCRAPE_LOG.push({ empresa, url: SOURCES[empresa].url, method: 'cache',
+      timestamp: now(), chars: 0, planesEncontrados: cachedEmpresa.length,
+      snippet: 'Datos reales del cache por empresa.' });
+    return { planes: cachedEmpresa.map(function(p){ return norm(Object.assign({},p,{dataSource:'cache'})); }), method: 'cache' };
+  }
+
+  // Ultimo recurso: datos estaticos de referencia
   const fallPlanes = FALLBACK
     .filter(p => p.empresa === empresa)
     .map(p => norm({...p, dataSource:'fallback'}));
@@ -1214,6 +1325,7 @@ async function doScrape() {
     $('stat-plans').innerHTML  = DATA.length + '<span>+</span>';
     $('stat-method').textContent = dataMethod;
     $('src-btn').style.display = 'inline-flex';
+    var bs = document.getElementById('btn-save'); if (bs) bs.style.display = 'inline-flex';
 
     // Status según calidad de datos
     if (realCount === 3) {
@@ -1551,6 +1663,45 @@ function setupReveal() {
     });
   }, { threshold: 0.08 });
   document.querySelectorAll('.rv').forEach(el => ro.observe(el));
+}
+
+/* ─── AUTO-ACTUALIZACION DEL ARCHIVO ─── */
+async function saveUpdatedFile() {
+  var btn = document.getElementById('btn-save');
+  if (!btn) return;
+  var orig = btn.textContent;
+  btn.textContent = '\u23f3 Generando...'; btn.disabled = true;
+  try {
+    var resp = await fetch(location.href);
+    if (!resp.ok) throw new Error('No se pudo leer el archivo');
+    var htmlStr = await resp.text();
+    var planesLimpios = DATA.map(function(p) { return {
+      empresa:p.empresa, plan:p.plan, velocidad:p.velocidad, precio:p.precio,
+      instalacion:p.instalacion||'Gratis', permanencia:p.permanencia||'Sin contrato',
+      provincias:p.provincias, dataSource:'fallback'
+    }; });
+    var lineas = planesLimpios.map(function(p){ return '  ' + JSON.stringify(p); }).join(',\n');
+    var fechaHoy = new Date().toLocaleDateString('es-CR',{day:'numeric',month:'long',year:'numeric'});
+    var SM = '/* FALLBACK_START */';
+    var EM = '/* FALLBACK_END */';
+    var nuevoBloque = SM + '\n  // Auto-actualizado el ' + fechaHoy + '\n' + lineas + '\n' + EM;
+    var si = htmlStr.indexOf(SM);
+    var ei = htmlStr.indexOf(EM) + EM.length;
+    if (si < 0 || ei < EM.length) throw new Error('Marcadores FALLBACK no encontrados');
+    var htmlActualizado = htmlStr.slice(0, si) + nuevoBloque + htmlStr.slice(ei);
+    var blob = new Blob([htmlActualizado], { type:'text/html;charset=utf-8' });
+    var url2 = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url2; a.download = 'compararinternet_4.html';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url2);
+    btn.textContent = '\u2705 \xa1Guardado!';
+    setTimeout(function(){ btn.textContent = orig; btn.disabled = false; }, 3000);
+  } catch(err) {
+    btn.textContent = '\u26a0 ' + err.message.slice(0,40);
+    btn.disabled = false;
+    setTimeout(function(){ btn.textContent = orig; }, 4000);
+  }
 }
 
 /* ─── INIT ─── */
